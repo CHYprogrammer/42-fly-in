@@ -73,6 +73,6 @@ def parse_path(filename: str) -> None:
     except FileNotFoundError:
         print("Error: file not found", file=sys.stderr)
         sys.exit(1)
-    except ParseError as e:
+    except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
