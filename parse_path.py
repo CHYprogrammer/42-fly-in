@@ -1,21 +1,43 @@
 import sys
 from utils import detect_brackets
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, Any
 
 
-def parse_hub(config: list[str]) -> None:
-    config[1], config[2] = int(config[1]), int(config[2])
+class Hub(BaseModel):
+    name: str
+    x: int = Field(..., ge=0)
+    y: int = Field(..., ge=0)
+    metadata: Optional[dict[str, str]] = {}
 
+    @model_validator(mode="before")
+    @classmethod
+    def parse_hub(cls, config: list[str]) -> dict[str, Any]:
+        if not isinstance(config, list):
+            raise ValueError("Invalid config type")
+        name, x, y, *rest = config
+        meta = rest[0] if rest else ""
+        return {
+            "name": name,
+            "x": int(x),
+            "y": int(y),
+            "metadata": cls._parse_metadata(meta)
+            }
 
-def parse_start(config: list[str]) -> None:
-    pass
-
-
-def parse_end(config: list[str]) -> None:
-    pass
-
-
-def parse_connection(config: list[str]) -> None:
-    pass
+    @staticmethod
+    def _parse_metadata(meta: str) -> dict[str, str]:
+        inner = meta.strip("[]").strip()
+        if not inner:
+            return {}
+        result: dict[str, str] = {}
+        for token in inner.split():
+            key, _, value = token.partition("=")
+            if not key or not value:
+                raise ValueError(f"empty key or value in '{token}'")
+            if key in result:
+                raise ValueError(f"duplicate metadata key '{key}'")
+            result[key] = value
+        return result
 
 
 def parse_line(line: str) -> None:
@@ -34,7 +56,7 @@ def parse_line(line: str) -> None:
             return parse_start(hub_config)
         elif words[0] == "end_hub:":
             return parse_end(hub_config)
-    raise ValueError("Invalid Input...Usage:"
+    raise ParseError("Invalid Input...Usage:"
                      " hub_style: name x y [config]")
 
 
@@ -48,6 +70,9 @@ def parse_path(filename: str) -> None:
                     continue
                 parse_line(line)
 
-    except Exception as e:
+    except FileNotFoundError:
+        print("Error: file not found", file=sys.stderr)
+        sys.exit(1)
+    except ParseError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
