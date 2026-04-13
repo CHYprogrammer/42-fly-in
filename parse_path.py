@@ -18,7 +18,7 @@ def parse_connection(config: list[str]) -> None:
     pass
 
 
-def parse_line(line: str) -> list[str, int, list] | list[str, list]:
+def parse_line(line: str) -> None:
     words = line.split()
 
     if words[0] == "connection:":
@@ -32,10 +32,10 @@ def parse_line(line: str) -> list[str, int, list] | list[str, list]:
             return parse_hub(hub_config)
         elif words[0] == "start_hub:":
             return parse_start(hub_config)
-        elif words[0] == "end_hub":
+        elif words[0] == "end_hub:":
             return parse_end(hub_config)
     raise ValueError("Invalid Input...Usage:"
-                        "        hub_style: name x y [config]")
+                     " hub_style: name x y [config]")
 
 
 def parse_path(filename: str) -> None:
