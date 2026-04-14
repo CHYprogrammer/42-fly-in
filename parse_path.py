@@ -16,17 +16,18 @@ class Hub(BaseModel):
         if not isinstance(config, list):
             raise ValueError("Invalid config type")
         name, x, y, *rest = config
-        meta = rest[0] if rest else ""
+        data = rest[0] if rest else ""
         return {
             "name": name,
             "x": int(x),
             "y": int(y),
-            "metadata": cls._parse_metadata(meta)
+            "metadata": cls._parse_metadata(data)
             }
 
     @staticmethod
-    def _parse_metadata(meta: str) -> dict[str, str]:
-        inner = meta.strip("[]").strip()
+    def _parse_metadata(data: str) -> dict[str, str]:
+
+        inner = data.strip("[]").strip()
         if not inner:
             return {}
         result: dict[str, str] = {}
@@ -37,42 +38,58 @@ class Hub(BaseModel):
             if key in result:
                 raise ValueError(f"duplicate metadata key '{key}'")
             result[key] = value
+
+        valid_zone_types = ["normal", "blocked", "restricted", "priority"]
+        for key, val in result.items():
+            if key == "max_drones":
+                if not val.isdigit() or int(val) <= 0:
+                    raise ValueError("max_drones must be a positive integer, "
+                                     f"- '{val}'")
+            elif key == "zone":
+                if val not in valid_zone_types:
+                    raise ValueError(f"invalid zone type - '{val}'")
+            elif key == "color":
+                if not val or " " in val:
+                    raise ValueError(f"color must be a single word - '{val}'")
+            else:
+                raise ValueError(f"unknown metadata key '{key}'")
+
         return result
 
 
-def parse_line(line: str) -> None:
-    words = line.split()
+#def parse_line(line: str) -> None:
+#    words = line.split()
 
-    if words[0] == "connection:":
-        return parse_connection(words[1:])
+#    if words[0] == "connection:":
+#        return parse_connection(words[1:])
 
-    hub_info = detect_brackets(line)
-    if hub_info:
-        hub_config = words[1:4]
-        hub_config.append(hub_info)
-        if words[0] == "hub:":
-            return parse_hub(hub_config)
-        elif words[0] == "start_hub:":
-            return parse_start(hub_config)
-        elif words[0] == "end_hub:":
-            return parse_end(hub_config)
-    raise ParseError("Invalid Input...Usage:"
-                     " hub_style: name x y [config]")
+#    hub_info = detect_brackets(line)
+#    if hub_info:
+#        hub_config = words[1:4]
+#        hub_config.append(hub_info)
+#        if words[0] == "hub:":
+#            return parse_hub(hub_config)
+#        elif words[0] == "start_hub:":
+#            return parse_start(hub_config)
+#        elif words[0] == "end_hub:":
+#            return parse_end(hub_config)
+#    raise ParseError("Invalid Input...Usage:"
+#                     " hub_style: name x y [config]")
 
 
-def parse_path(filename: str) -> None:
-    try:
-        with open(filename, 'r') as f:
-            for line in f:
-                if "#" in line:
-                    line = line.split("#")[0]
-                if not line:
-                    continue
-                parse_line(line)
+#def parse_path(filename: str) -> None:
+#    try:
+#        with open(filename, 'r') as f:
+#            for line in f:
+#                if "#" in line:
+#                    line = line.split("#")[0]
+#                if not line:
+#                    continue
+#                parse_line(line)
 
-    except FileNotFoundError:
-        print("Error: file not found", file=sys.stderr)
-        sys.exit(1)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+#    except FileNotFoundError:
+#        print("Error: file not found", file=sys.stderr)
+#        sys.exit(1)
+#    except ValueError as e:
+#        print(f"Error: {e}", file=sys.stderr)
+#        sys.exit(1)
