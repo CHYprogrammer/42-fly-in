@@ -1,28 +1,31 @@
 import sys
-from utils import detect_brackets
-from pydantic import BaseModel, Field, model_validator
+from utils import detect_bracket
+from dataclasses import dataclass
 from typing import Optional, Any
 
 
-class Hub(BaseModel):
-    name: str
-    x: int = Field(..., ge=0)
-    y: int = Field(..., ge=0)
-    metadata: Optional[dict[str, str]] = {}
+# !!claude メッセージ保留中！！
 
-    @model_validator(mode="before")
+
+@dataclass
+class Hub():
+    name: str
+    x: int
+    y: int
+    metadata: dict[str, str]
+
     @classmethod
-    def parse_hub(cls, config: list[str]) -> dict[str, Any]:
+    def parse_and_init(cls, config: list[str]) -> "Hub":
         if not isinstance(config, list):
             raise ValueError("Invalid config type")
         name, x, y, *rest = config
         data = rest[0] if rest else ""
-        return {
-            "name": name,
-            "x": int(x),
-            "y": int(y),
-            "metadata": cls._parse_metadata(data)
-            }
+        return cls(
+            name=name,
+            x=int(x),
+            y=int(y),
+            metadata=cls._parse_metadata(data)
+        )
 
     @staticmethod
     def _parse_metadata(data: str) -> dict[str, str]:
@@ -57,39 +60,35 @@ class Hub(BaseModel):
         return result
 
 
-#def parse_line(line: str) -> None:
-#    words = line.split()
-
-#    if words[0] == "connection:":
-#        return parse_connection(words[1:])
-
-#    hub_info = detect_brackets(line)
-#    if hub_info:
-#        hub_config = words[1:4]
-#        hub_config.append(hub_info)
-#        if words[0] == "hub:":
-#            return parse_hub(hub_config)
-#        elif words[0] == "start_hub:":
-#            return parse_start(hub_config)
-#        elif words[0] == "end_hub:":
-#            return parse_end(hub_config)
-#    raise ParseError("Invalid Input...Usage:"
-#                     " hub_style: name x y [config]")
+def parse_line(line: str) -> None:
+    metadata = detect_bracket(line)
+    line = [:line.find("[")]
+    config = line.split()
+    if metadata:
+        config.append(metadata)
+    if words[0] == "connection:":
+        con_config = words[1]
+        return Connection.parse_and_init(con_config)
+    elif words[0] in ("hub:", "start_hub", "end_hub"):
+        return Hub.parse_and_init(hub_config)
+    else:
+        raise ValueError("Invalid Input...Usage:"
+                         " hub_style: name x y [config]")
 
 
-#def parse_path(filename: str) -> None:
-#    try:
-#        with open(filename, 'r') as f:
-#            for line in f:
-#                if "#" in line:
-#                    line = line.split("#")[0]
-#                if not line:
-#                    continue
-#                parse_line(line)
+def parse_path(filename: str) -> None:
+    try:
+        with open(filename, 'r') as f:
+            for line in f:
+                if "#" in line:
+                    line = line.split("#")[0]
+                if not line:
+                    continue
+                parse_line(line)
 
-#    except FileNotFoundError:
-#        print("Error: file not found", file=sys.stderr)
-#        sys.exit(1)
-#    except ValueError as e:
-#        print(f"Error: {e}", file=sys.stderr)
-#        sys.exit(1)
+    except FileNotFoundError:
+        print("Error: file not found", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)

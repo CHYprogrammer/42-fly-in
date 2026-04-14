@@ -2,7 +2,7 @@
 from typing import Optional
 
 
-def detect_brackets(string: str) -> Optional[str]:
+def detect_bracket(string: str) -> Optional[str]:
     start = string.find("[")
     end = string.find("]")
 
