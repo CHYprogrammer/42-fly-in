@@ -1,7 +1,6 @@
 import sys
 from utils import detect_bracket
 from dataclasses import dataclass
-from typing import Optional, Any
 
 
 # !!claude メッセージ保留中！！
@@ -60,17 +59,22 @@ class Hub():
         return result
 
 
-def parse_line(line: str) -> None:
+class Connection:
+    @classmethod
+    def parse_and_init(cls, config: list[str]) -> "Connection":
+        return cls()
+
+
+def parse_line(line: str) -> Hub | Connection:
     metadata = detect_bracket(line)
-    line = [:line.find("[")]
+    line = line.split(metadata)[0] if metadata else line
     config = line.split()
     if metadata:
         config.append(metadata)
-    if words[0] == "connection:":
-        con_config = words[1]
-        return Connection.parse_and_init(con_config)
-    elif words[0] in ("hub:", "start_hub", "end_hub"):
-        return Hub.parse_and_init(hub_config)
+    if config[0] == "connection:":
+        return Connection.parse_and_init(config[1:])
+    elif config[0] in ("hub:", "start_hub", "end_hub"):
+        return Hub.parse_and_init(config[1:])
     else:
         raise ValueError("Invalid Input...Usage:"
                          " hub_style: name x y [config]")
