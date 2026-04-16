@@ -74,6 +74,7 @@ class Hub():
         return result
 
 
+@dataclass
 class Connection:
     zone_a: str
     zone_b: str
@@ -99,18 +100,18 @@ class Connection:
         return cls(
             zone_a=zone_a,
             zone_b=zone_b,
-            metadata=cls._parse_metadata(data).values()
+            metadata=cls._parse_metadata(data)
         )
 
     @staticmethod
-    def _parse_metadata(data: str) -> dict[str, str]:
+    def _parse_metadata(data: str) -> int:
 
         inner = data.strip("[]").strip()
         if not inner:
-            return {}
-        result: dict[str, str] = {}
+            return 1
+        result: dict[str, int] = {}
         for token in inner.split():
-            key, _, value = token.partition("=")
+            key, _, value = token[0].partition("=")
             if not key or not value:
                 raise ValueError(f"empty key or value in '{token}'")
             if key in result:
@@ -123,7 +124,7 @@ class Connection:
                     f"got '{value}'"
                     )
             result[key] = int(value)
-        return result
+        return int(result[key])
 
 
 def parse_line(line: str) -> dict[str, Hub | Connection]:
