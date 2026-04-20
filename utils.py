@@ -10,5 +10,7 @@ def detect_bracket(string: str) -> Optional[str]:
         return None
     if end < start:
         raise ValueError(f"Malformed brackets in: '{string}'")
+    if string.count("[") > 1 or string.count("]") > 1:
+        raise ValueError(f"Multiple brackets in: '{string}")
 
     return string[start: end + 1]
