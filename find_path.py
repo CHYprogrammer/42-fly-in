@@ -1,4 +1,4 @@
-from mapconfig import MapConfig, Hub, HubType
+from parse_config import MapConfig, Hub, HubType
 
 # tasks:
 # MapConfigに保管されたデータをダイクストラ法で扱えるように成形

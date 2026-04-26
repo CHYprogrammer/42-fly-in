@@ -1,13 +1,13 @@
 import sys
-from utils import detect_bracket
 from dataclasses import dataclass, field
-from enum import Enum
+from typing import Optional
 
 
 """
     map_config のエラー処理用。
     config.txt:
-        connection: # ない場合に、264.178.257, in parse_line conn_token(config[1]): IndexError
+        connection:
+        # ない場合に、264.178.257, in parse_line conn_token(config[1]): IndexError
 
 """
 
@@ -17,21 +17,14 @@ from enum import Enum
 # 独立したコネクションに関しては一旦保留
 
 
-class HubType(Enum):
-    HUB = "hub"
-    START = "start_hub"
-    END = "end_hub"
-
-
 @dataclass
 class Hub():
     x: int
     y: int
-    hub_type: HubType = HubType.HUB
     metadata: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def parse_and_init(cls, config: list[str], hub_type: str = "hub") -> "Hub":
+    def parse_and_init(cls, config: list[str]) -> "Hub":
         if not isinstance(config, list):
             raise ValueError("Invalid config type")
         x, y, *rest = config
@@ -43,7 +36,6 @@ class Hub():
         return cls(
             x=x,
             y=y,
-            hub_type=HubType(hub_type),
             metadata=cls._parse_metadata(data)
         )
 
@@ -138,6 +130,8 @@ class Connection:
 class MapConfig:
     nb_drones: int
     hubs: dict[str, Hub] = field(default_factory=dict)
+    start: dict[str, Hub]
+    end: dict[str, Hub]
     connections: list[Connection] = field(default_factory=list)
 
     @classmethod
@@ -145,6 +139,8 @@ class MapConfig:
         try:
             nb_drones = None
             hubs: dict[str, Hub] = {}
+            start: dict[str, Hub] = {}
+            end: dict[str, Hub] = {}
             connections: list[Connection] = []
             seen_connections: set[frozenset[str]] = set()
 
@@ -155,121 +151,48 @@ class MapConfig:
                         continue
 
                     if nb_drones is None:
-                        if not line.startswith("nb_drones"):
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + "first line must be 'nb_drones: <n>'"
-                                )
-                        _, _, value = line.partition(":")
-                        if not value.strip().isdigit() or int(value) <= 0:
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + "nb_drones must be a positive integer, "
-                                + f"got '{value}'"
-                                )
-                        nb_drones = int(value)
+                        nb_drones = cls._parse_nb_drones(line, line_num)
                         continue
 
-                    try:
-                        metadata = detect_bracket(line)
-                    except ValueError as e:
-                        raise ValueError(f"line {line_num}: {e}")
+                    metadata = cls._detect_bracket(line, line_num)
                     base = line.split(metadata)[0] if metadata else line
                     config = base.split()
                     if metadata:
                         config.append(metadata)
 
                     if config[0] in ("hub:", "start_hub:", "end_hub:"):
-                        if len(config) < 4:
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + "hub must have at least 4 arguments, "
-                                + f"got {len(config)} in '{line}'"
-                            )
-                        name = config[1]
-                        if "-" in name or " " in name:
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + f"zone name '{name}' must not contain dashes or spaces"
-                                )
-                        if name in hubs:
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + f"duplicate zone name '{key}'"
-                            )
-                        hub_type = config[0].strip(":")
-                        try:
-                            hubs[name] = Hub.parse_and_init(config[2:], hub_type)
-                        except ValueError as e:
-                            raise ValueError(f"line {line_num}: {e}")
+                        cls._parse_hub(
+                            line,
+                            config,
+                            line_num,
+                            hubs,
+                            start,
+                            end)
 
                     elif config[0] == "connection:":
-                        try:
-                            path = Connection.parse_and_init(config[1:])
-                        except ValueError as e:
-                            raise ValueError(f"line {line_num}: {e}")
-                        if (path.zone_a not in hubs
-                                or path.zone_b not in hubs):
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + "connection references unknown hub "
-                                + f"'{path.zone_a}-{path.zone_b}'"
-                            )
-                        conn_key = frozenset((path.zone_a, path.zone_b))
-                        if conn_key in seen_connections:
-                            raise ValueError(
-                                f"line {line_num}: "
-                                + "duplicate connection "
-                                + f"'{path.zone_a}-{path.zone_b}'"
-                            )
-                        seen_connections.add(conn_key)
-                        connections.append(path)
+                        cls._parse_connections(
+                            line,
+                            config,
+                            line_num,
+                            connections,
+                            seen_connections)
 
                     else:
-                        raise ValueError(f"unrecognised line prefix '{config[0]}'")
-
-                    # # testify_changed
-
-                    # if isinstance(parsed, list):  # Connection
-                    #     if (parsed.zone_a not in hubs
-                    #         or parsed.zone_b not in hubs):
-                    #         raise ValueError(
-                    #             f"line {line_num}: "
-                    #             + "connection references unknown hub "
-                    #             + f"'{parsed.zone_a}-{parsed.zone_b}'"
-                    #         )
-                    #     conn_key = frozenset((parsed.zone_a, parsed.zone_b))
-                    #     if conn_key in seen_connections:
-                    #         raise ValueError(
-                    #             f"line {line_num}: "
-                    #             + "duplicate connection "
-                    #             + f"'{parsed.zone_a}-{parsed.zone_b}'"
-                    #         )
-                    #     seen_connections.add(conn_key)
-                    #     connections.append(parsed)
+                        raise ValueError(
+                            f"unrecognised line prefix '{config[0]}'")
 
             if nb_drones is None:
                 raise ValueError(
-                    "file is empty or missing 'nb_drones'"
-                    )
+                    "file is empty or missing 'nb_drones'")
+            cls._check_start_end_nbr(start, end)
 
-            # check number of start_hub and end_hub
-            starts, ends = 0, 0
-            for h in hubs.values():
-                if h.hub_type == HubType.START:
-                    starts += 1
-                elif h.hub_type == HubType.END:
-                    ends += 1
-            if starts != 1:
-                raise ValueError(
-                    f"exactly one start_hub required, got {starts}"
-                    )
-            if ends != 1:
-                raise ValueError(
-                    f"exactly one end_hub required, got {ends}"
-                    )
-
-            return cls(nb_drones=nb_drones, hubs=hubs, connections=connections)
+            return cls(
+                nb_drones=nb_drones,
+                hubs=hubs,
+                connections=connections,
+                start=start,
+                end=end
+                )
 
         except FileNotFoundError:
             print("Error: file not found", file=sys.stderr)
@@ -278,26 +201,116 @@ class MapConfig:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-    @classmethod
-    def parse_line(cls, line: str) -> dict[str, Hub | Connection]:
-        metadata = detect_bracket(line)
-        base = line.split(metadata)[0] if metadata else line
-        config = base.split()
-        if metadata:
-            config.append(metadata)
+    # helper methods
+    @staticmethod
+    def _detect_bracket(string: str, line_num) -> Optional[str]:
+        start = string.find("[")
+        end = string.find("]")
 
-        if config[0] in ("hub:", "start_hub:", "end_hub:"):
-            name = config[1]
-            if "-" in name or " " in name:
-                raise ValueError(
-                    f"zone name '{name}' must not contain dashes or spaces"
-                    )
-            hub_type = config[0].strip(":")
-            return {name: Hub.parse_and_init(config[2:], hub_type)}
-        elif config[0] == "connection:":
-            return Connection.parse_and_init(config[1:])
-        else:
-            raise ValueError(f"unrecognised line prefix '{config[0]}'")
+        if start == -1 and end == -1:
+            return None
+        if end < start:
+            raise ValueError(
+                f"line {line_num}: malformed brackets in: '{string}'")
+        if string.count("[") > 1 or string.count("]") > 1:
+            raise ValueError(
+                f"line {line_num}: multiple brackets in: '{string}'")
+        if string[end] != string[-1]:
+            raise ValueError(
+                f"line {line_num}: "
+                + "extra string appears after the brackets"
+                + f" - '... {string[end:]}'")
+
+        return string[start: end + 1]
+
+    @staticmethod
+    def _parse_hub(
+        line: str,
+        config: list,
+        line_num: int,
+        hubs: dict,
+        start: dict,
+        end: dict
+    ) -> None:
+        if len(config) < 4:
+            raise ValueError(
+                f"line {line_num}: "
+                + "hub must have at least 4 arguments, "
+                + f"got {len(config)} in '{line}'"
+            )
+        name = config[1]
+        if "-" in name or " " in name:
+            raise ValueError(
+                f"line {line_num}: "
+                + f"zone name '{name}' must not contain dashes or spaces"
+                )
+        if name in start or name in end or name in hubs:
+            raise ValueError(
+                f"line {line_num}: "
+                + f"duplicate zone name '{name}'"
+            )
+        hub_type = config[0].strip(":")
+        try:
+            if hub_type == "start_hub":
+                start[name] = Hub.parse_and_init(config[2:])
+            elif hub_type == "end_hub":
+                end[name] = Hub.parse_and_init(config[2:])
+            else:
+                hubs[name] = Hub.parse_and_init(config[2:])
+        except ValueError as e:
+            raise ValueError(f"line {line_num}: {e}")
+
+    @staticmethod
+    def _parse_nb_drones(line: str, line_num: int) -> int:
+        if not line.startswith("nb_drones"):
+            raise ValueError(
+                f"line {line_num}: "
+                + "first line must be 'nb_drones: <n>'")
+        _, _, value = line.partition(":")
+        if not value.strip().isdigit() or int(value) <= 0:
+            raise ValueError(
+                f"line {line_num}: "
+                + "nb_drones must be a positive integer, "
+                + f"got '{value}'")
+        return int(value)
+
+    @staticmethod
+    def _parse_connections(
+        config: list,
+        line_num: int,
+        hubs: dict,
+        connections: list,
+        seen_connections: list
+    ) -> None:
+        try:
+            path = Connection.parse_and_init(config[1:])
+        except ValueError as e:
+            raise ValueError(f"line {line_num}: {e}")
+        if (path.zone_a not in hubs
+                or path.zone_b not in hubs):
+            raise ValueError(
+                f"line {line_num}: "
+                + "connection references unknown hub "
+                + f"'{path.zone_a}-{path.zone_b}'"
+            )
+        conn_key = frozenset((path.zone_a, path.zone_b))
+        if conn_key in seen_connections:
+            raise ValueError(
+                f"line {line_num}: "
+                + "duplicate connection "
+                + f"'{path.zone_a}-{path.zone_b}'"
+            )
+        seen_connections.add(conn_key)
+        connections.append(path)
+
+    @staticmethod
+    def _check_start_end_nbr(start: dict, end: dict) -> None:
+        if len(start) != 1:
+            raise ValueError(
+                f"exactly one start_hub required, got {start}")
+        if len(end) != 1:
+            raise ValueError(
+                f"exactly one end_hub required, got {end}")
 
 
 if __name__ == "__main__":

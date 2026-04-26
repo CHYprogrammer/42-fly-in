@@ -2,16 +2,18 @@ import heapq
 # コストを道ではなく座標に振り分けるような場合の設計
 
 
-def dijkstra(graph, start, end) -> None:
+def dijkstra(graph, start, end):
     distances = {node: float('infinity') for node in graph}
     distances[start] = 0
     queue = [(0, start)]
+    path = []
 
     while queue:
         current_distance, current_node = heapq.heappop(queue)
 
         if current_node == end:
-            return distances[end]
+            path.append(current_node)
+            return path, distances[end]
 
         if distances[current_node] < current_distance:
             continue
@@ -21,6 +23,7 @@ def dijkstra(graph, start, end) -> None:
 
             if distance < distances[neighbor]:
                 distances[neighbor] = distance
+                path.append(current_node)
                 heapq.heappush(queue, (distance, neighbor))
 
     return None
