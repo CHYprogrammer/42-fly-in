@@ -18,13 +18,6 @@ Example file format:
     end_hub: Gamma 50 60
     connection: Alpha-Beta [max_link_capacity=2]
     connection: Beta-Gamma
-
-MapConfig: parse_map:
-    # !!! Error は実行ファイルに投げる！！
-    # except FileNotFoundError:
-    #     print("Error: file not found", file=sys.stderr)
-    # except ValueError as e:
-    #     print(f"Error: {e}", file=sys.stderr)
 """
 
 from dataclasses import dataclass, field
