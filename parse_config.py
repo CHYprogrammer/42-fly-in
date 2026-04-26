@@ -20,209 +20,11 @@ Example file format:
     connection: Beta-Gamma
 """
 
+from __future__ import annotations
+
+
 from dataclasses import dataclass, field
 from typing import Optional
-
-
-@dataclass
-class Hub():
-    """
-    Represents a physical hub on the map with coordinates and properties.
-
-    Attributes:
-        x (int): The X-coordinate of the hub.
-        y (int): The Y-coordinate of the hub.
-        metadata (dict[str, str]): A dictionary of additional attributes
-            (e.g., 'zone', 'max_drones', 'color').
-    """
-
-    x: int
-    y: int
-    metadata: dict[str, str] = field(default_factory=dict)
-
-    @classmethod
-    def parse_and_init(cls, config: list[str]) -> "Hub":
-        """
-        Parses raw configuration tokens to initialize a Hub instance.
-
-        Args:
-            config (list[str]): A list of tokens containing [x, y, metadata].
-
-        Returns:
-            Hub: A new instance of Hub with validated coordinates and metadata.
-
-        Raises:
-            ValueError: If the config type is invalid, coordinates are not
-                integers, or metadata parsing fails.
-        """
-
-        if not isinstance(config, list):
-            raise ValueError("Invalid config type")
-
-        x_str, y_str, *rest = config
-        try:
-            x, y = int(x_str), int(y_str)
-        except ValueError:
-            raise ValueError(
-                f"coordinates must be integers, got '{x_str}' '{y_str}'")
-        data = rest[0] if rest else ""
-
-        return cls(
-            x=x,
-            y=y,
-            metadata=cls._parse_metadata(data)
-        )
-
-    @staticmethod
-    def _parse_metadata(data: str) -> dict[str, str]:
-        """
-        Parses and validates metadata strings formatted as
-        [key=value key=value].
-
-        Supported keys:
-            - zone: Must be 'normal', 'blocked', 'restricted', or 'priority'.
-            - max_drones: Must be a positive integer.
-            - color: Must be a single word.
-
-        Args:
-            data (str): The raw metadata string wrapped in brackets.
-
-        Returns:
-            dict[str, str]: A dictionary of validated metadata.
-
-        Raises:
-            ValueError: If formatting is incorrect, keys are unknown,
-                values are invalid, or duplicate keys are found.
-        """
-
-        result: dict[str, str] = {}
-        inner = data.strip("[]").strip()
-        if not inner:
-            return result
-
-        for token in inner.split():
-            key, _, value = token.partition("=")
-            if not key or not value:
-                raise ValueError(f"empty key or value in '{token}'")
-            if key in result:
-                raise ValueError(f"duplicate metadata key '{key}'")
-            result[key] = value
-
-        valid_zone_types = ["normal", "blocked", "restricted", "priority"]
-        for key, val in result.items():
-            if key == "max_drones":
-                if not val.isdigit() or int(val) <= 0:
-                    raise ValueError(
-                        "max_drones must be a positive integer, "
-                        f"got '{val}'")
-            elif key == "zone":
-                if val not in valid_zone_types:
-                    raise ValueError(f"invalid zone type - '{val}'")
-            elif key == "color":
-                if not val or " " in val:
-                    raise ValueError(f"color must be a single word - '{val}'")
-            else:
-                raise ValueError(f"unknown metadata key '{key}'")
-
-        return result
-
-
-@dataclass
-class Connection:
-    """
-    Represents a link between two hubs with a specific throughput capacity.
-
-    Attributes:
-        zone_a (str): The name of the first hub in the connection.
-        zone_b (str): The name of the second hub in the connection.
-        max_link_capacity (int): The maximum number of drones allowed
-            simultaneously on this link. Defaults to 1.
-    """
-
-    zone_a: str
-    zone_b: str
-    max_link_capacity: int = 1
-
-    @classmethod
-    def parse_and_init(cls, config: list[str]) -> "Connection":
-        """
-        Parses raw configuration tokens to initialize a Connection instance.
-
-        Expects a token in the format 'zoneA-zoneB' followed by optional
-        metadata.
-
-        Args:
-            config (list[str]): A list of tokens containing [connection_string,
-                metadata].
-
-        Returns:
-            Connection: A new instance of Connection.
-
-        Raises:
-            ValueError: If the config is empty, the connection string format
-                is invalid, or zone names are empty.
-        """
-
-        if not isinstance(config, list) or not config:
-            raise ValueError("connection is empty or invalid config type")
-
-        conn_token, *rest = config
-        data = rest[0] if rest else ""
-        if conn_token.count("-") != 1:
-            raise ValueError(
-                f"connection must be <zone1>-<zone2>, got '{conn_token}'")
-        zone_a, zone_b = conn_token.split("-")
-        if not zone_a or not zone_b:
-            raise ValueError(
-                f"empty zone name in connection '{conn_token}'")
-
-        return cls(
-            zone_a=zone_a,
-            zone_b=zone_b,
-            max_link_capacity=cls._parse_metadata(data)
-        )
-
-    @staticmethod
-    def _parse_metadata(data: str) -> int:
-        """
-        Parses connection-specific metadata to extract the link capacity.
-
-        Supported keys:
-            - max_link_capacity: Must be a positive integer.
-
-        Args:
-            data (str): The raw metadata string wrapped in brackets.
-
-        Returns:
-            int: The value of max_link_capacity, or 1 if no metadata is
-                provided.
-
-        Raises:
-            ValueError: If formatting is incorrect, keys are unknown,
-                the value is not a positive integer, or duplicate keys are
-                found.
-        """
-
-        inner = data.strip("[]").strip()
-        if not inner:
-            return 1
-
-        result: dict[str, int] = {}
-        for token in inner.split():
-            key, _, value = token.partition("=")
-            if not key or not value:
-                raise ValueError(f"empty key or value in '{token}'")
-            if key in result:
-                raise ValueError(f"duplicate metadata key '{key}'")
-            if key != "max_link_capacity":
-                raise ValueError(f"unknown connection metadata key '{key}'")
-            if not value.isdigit() or int(value) <= 0:
-                raise ValueError(
-                    "max_link_capacity must be a positive integer, "
-                    f"got '{value}'")
-            result[key] = int(value)
-
-        return int(result[key])
 
 
 @dataclass
@@ -252,7 +54,7 @@ class MapConfig:
     connections: list[Connection] = field(default_factory=list)
 
     @classmethod
-    def parse_map(cls, filename: str) -> "MapConfig":
+    def parse_map(cls, filename: str) -> MapConfig:
         """
         Parses a map configuration file and initializes a MapConfig instance.
 
@@ -333,7 +135,9 @@ class MapConfig:
             end=end
             )
 
-    # === helper methods ===
+    # -------------------------------------------------------------------------
+    # Helpers
+    # -------------------------------------------------------------------------
 
     @staticmethod
     def _detect_bracket(string: str, line_num: int) -> Optional[str]:
@@ -523,3 +327,204 @@ class MapConfig:
         if len(end) != 1:
             raise ValueError(
                 f"exactly one end_hub required, got {end}")
+
+
+@dataclass
+class Hub():
+    """
+    Represents a physical hub on the map with coordinates and properties.
+
+    Attributes:
+        x (int): The X-coordinate of the hub.
+        y (int): The Y-coordinate of the hub.
+        metadata (dict[str, str]): A dictionary of additional attributes
+            (e.g., 'zone', 'max_drones', 'color').
+    """
+
+    x: int
+    y: int
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def parse_and_init(cls, config: list[str]) -> Hub:
+        """
+        Parses raw configuration tokens to initialize a Hub instance.
+
+        Args:
+            config (list[str]): A list of tokens containing [x, y, metadata].
+
+        Returns:
+            Hub: A new instance of Hub with validated coordinates and metadata.
+
+        Raises:
+            ValueError: If the config type is invalid, coordinates are not
+                integers, or metadata parsing fails.
+        """
+
+        if not isinstance(config, list):
+            raise ValueError("Invalid config type")
+
+        x_str, y_str, *rest = config
+        try:
+            x, y = int(x_str), int(y_str)
+        except ValueError:
+            raise ValueError(
+                f"coordinates must be integers, got '{x_str}' '{y_str}'")
+        data = rest[0] if rest else ""
+
+        return cls(
+            x=x,
+            y=y,
+            metadata=cls._parse_metadata(data)
+        )
+
+    @staticmethod
+    def _parse_metadata(data: str) -> dict[str, str]:
+        """
+        Parses and validates metadata strings formatted as
+        [key=value key=value].
+
+        Supported keys:
+            - zone: Must be 'normal', 'blocked', 'restricted', or 'priority'.
+            - max_drones: Must be a positive integer.
+            - color: Must be a single word.
+
+        Args:
+            data (str): The raw metadata string wrapped in brackets.
+
+        Returns:
+            dict[str, str]: A dictionary of validated metadata.
+
+        Raises:
+            ValueError: If formatting is incorrect, keys are unknown,
+                values are invalid, or duplicate keys are found.
+        """
+
+        result: dict[str, str] = {}
+        inner = data.strip("[]").strip()
+        if not inner:
+            return result
+
+        for token in inner.split():
+            key, _, value = token.partition("=")
+            if not key or not value:
+                raise ValueError(f"empty key or value in '{token}'")
+            if key in result:
+                raise ValueError(f"duplicate metadata key '{key}'")
+            result[key] = value
+
+        valid_zone_types = ["normal", "blocked", "restricted", "priority"]
+        for key, val in result.items():
+            if key == "max_drones":
+                if not val.isdigit() or int(val) <= 0:
+                    raise ValueError(
+                        "max_drones must be a positive integer, "
+                        f"got '{val}'")
+            elif key == "zone":
+                if val not in valid_zone_types:
+                    raise ValueError(f"invalid zone type - '{val}'")
+            elif key == "color":
+                if not val or " " in val:
+                    raise ValueError(f"color must be a single word - '{val}'")
+            else:
+                raise ValueError(f"unknown metadata key '{key}'")
+
+        return result
+
+
+@dataclass
+class Connection:
+    """
+    Represents a link between two hubs with a specific throughput capacity.
+
+    Attributes:
+        zone_a (str): The name of the first hub in the connection.
+        zone_b (str): The name of the second hub in the connection.
+        max_link_capacity (int): The maximum number of drones allowed
+            simultaneously on this link. Defaults to 1.
+    """
+
+    zone_a: str
+    zone_b: str
+    max_link_capacity: int = 1
+
+    @classmethod
+    def parse_and_init(cls, config: list[str]) -> Connection:
+        """
+        Parses raw configuration tokens to initialize a Connection instance.
+
+        Expects a token in the format 'zoneA-zoneB' followed by optional
+        metadata.
+
+        Args:
+            config (list[str]): A list of tokens containing [connection_string,
+                metadata].
+
+        Returns:
+            Connection: A new instance of Connection.
+
+        Raises:
+            ValueError: If the config is empty, the connection string format
+                is invalid, or zone names are empty.
+        """
+
+        if not isinstance(config, list) or not config:
+            raise ValueError("connection is empty or invalid config type")
+
+        conn_token, *rest = config
+        data = rest[0] if rest else ""
+        if conn_token.count("-") != 1:
+            raise ValueError(
+                f"connection must be <zone1>-<zone2>, got '{conn_token}'")
+        zone_a, zone_b = conn_token.split("-")
+        if not zone_a or not zone_b:
+            raise ValueError(
+                f"empty zone name in connection '{conn_token}'")
+
+        return cls(
+            zone_a=zone_a,
+            zone_b=zone_b,
+            max_link_capacity=cls._parse_metadata(data)
+        )
+
+    @staticmethod
+    def _parse_metadata(data: str) -> int:
+        """
+        Parses connection-specific metadata to extract the link capacity.
+
+        Supported keys:
+            - max_link_capacity: Must be a positive integer.
+
+        Args:
+            data (str): The raw metadata string wrapped in brackets.
+
+        Returns:
+            int: The value of max_link_capacity, or 1 if no metadata is
+                provided.
+
+        Raises:
+            ValueError: If formatting is incorrect, keys are unknown,
+                the value is not a positive integer, or duplicate keys are
+                found.
+        """
+
+        inner = data.strip("[]").strip()
+        if not inner:
+            return 1
+
+        result: dict[str, int] = {}
+        for token in inner.split():
+            key, _, value = token.partition("=")
+            if not key or not value:
+                raise ValueError(f"empty key or value in '{token}'")
+            if key in result:
+                raise ValueError(f"duplicate metadata key '{key}'")
+            if key != "max_link_capacity":
+                raise ValueError(f"unknown connection metadata key '{key}'")
+            if not value.isdigit() or int(value) <= 0:
+                raise ValueError(
+                    "max_link_capacity must be a positive integer, "
+                    f"got '{value}'")
+            result[key] = int(value)
+
+        return int(result[key])
