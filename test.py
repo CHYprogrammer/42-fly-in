@@ -5,15 +5,11 @@ from enum import Enum
 
 
 """
-    parse map file.
-
-    Structure:
-        Config
-        |_ Hub
-        |_ Connection
+    map_config のエラー処理用。
+    config.txt:
+        connection: # ない場合に、264.178.257, in parse_line conn_token(config[1]): IndexError
 
 """
-
 
 # remained tasks:
 # おそらくアルゴリズム内で行うべきことだが
@@ -94,7 +90,7 @@ class Connection:
     @classmethod
     def parse_and_init(cls, config: list[str]) -> "Connection":
         if not isinstance(config, list) or not config:
-            raise ValueError("Invalid config type")
+            raise ValueError("connection is empty or invalid config type")
         conn_token, *rest = config
         data = rest[0] if rest else ""
 
@@ -142,14 +138,14 @@ class Connection:
 class MapConfig:
     nb_drones: int
     hubs: dict[str, Hub] = field(default_factory=dict)
-    connections: dict[str, Connection] = field(default_factory=dict)
+    connections: list[Connection] = field(default_factory=list)
 
     @classmethod
     def parse_map(cls, filename: str) -> "MapConfig":
         try:
             nb_drones = None
             hubs: dict[str, Hub] = {}
-            connections: dict[str, Connection] = {}
+            connections: list[Connection] = []
             seen_connections: set[frozenset[str]] = set()
 
             with open(filename, 'r') as f:
@@ -174,39 +170,83 @@ class MapConfig:
                         nb_drones = int(value)
                         continue
 
-                    # parse a line practically
                     try:
-                        parsed = cls.parse_line(line)
+                        metadata = detect_bracket(line)
                     except ValueError as e:
-                        raise ValueError(
-                            f"line {line_num}: {e}"
-                        )
+                        raise ValueError(f"line {line_num}: {e}")
+                    base = line.split(metadata)[0] if metadata else line
+                    config = base.split()
+                    if metadata:
+                        config.append(metadata)
 
-                    for key, obj in parsed.items():
-                        if isinstance(obj, Connection):
-                            if (obj.zone_a not in hubs
-                               or obj.zone_b not in hubs):
-                                raise ValueError(
-                                    f"line {line_num}: "
-                                    + "connection references unknown hub "
-                                    + f"'{obj.zone_a}-{obj.zone_b}'"
+                    if config[0] in ("hub:", "start_hub:", "end_hub:"):
+                        if len(config) < 4:
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + "hub must have at least 4 arguments, "
+                                + f"got {len(config)} in '{line}'"
+                            )
+                        name = config[1]
+                        if "-" in name or " " in name:
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + f"zone name '{name}' must not contain dashes or spaces"
                                 )
-                            conn_key = frozenset((obj.zone_a, obj.zone_b))
-                            if conn_key in seen_connections:
-                                raise ValueError(
-                                    f"line {line_num}: "
-                                    + "duplicate connection "
-                                    + f"'{obj.zone_a}-{obj.zone_b}'"
-                                )
-                            seen_connections.add(conn_key)
-                            connections[key] = obj
-                        else:  # isinstance(obj, Hub)
-                            if key in hubs:
-                                raise ValueError(
-                                    f"line {line_num}: "
-                                    + f"duplicate zone name '{key}'"
-                                )
-                            hubs[key] = obj
+                        if name in hubs:
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + f"duplicate zone name '{key}'"
+                            )
+                        hub_type = config[0].strip(":")
+                        try:
+                            hubs[name] = Hub.parse_and_init(config[2:], hub_type)
+                        except ValueError as e:
+                            raise ValueError(f"line {line_num}: {e}")
+
+                    elif config[0] == "connection:":
+                        try:
+                            path = Connection.parse_and_init(config[1:])
+                        except ValueError as e:
+                            raise ValueError(f"line {line_num}: {e}")
+                        if (path.zone_a not in hubs
+                                or path.zone_b not in hubs):
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + "connection references unknown hub "
+                                + f"'{path.zone_a}-{path.zone_b}'"
+                            )
+                        conn_key = frozenset((path.zone_a, path.zone_b))
+                        if conn_key in seen_connections:
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + "duplicate connection "
+                                + f"'{path.zone_a}-{path.zone_b}'"
+                            )
+                        seen_connections.add(conn_key)
+                        connections.append(path)
+
+                    else:
+                        raise ValueError(f"unrecognised line prefix '{config[0]}'")
+
+                    # # testify_changed
+
+                    # if isinstance(parsed, list):  # Connection
+                    #     if (parsed.zone_a not in hubs
+                    #         or parsed.zone_b not in hubs):
+                    #         raise ValueError(
+                    #             f"line {line_num}: "
+                    #             + "connection references unknown hub "
+                    #             + f"'{parsed.zone_a}-{parsed.zone_b}'"
+                    #         )
+                    #     conn_key = frozenset((parsed.zone_a, parsed.zone_b))
+                    #     if conn_key in seen_connections:
+                    #         raise ValueError(
+                    #             f"line {line_num}: "
+                    #             + "duplicate connection "
+                    #             + f"'{parsed.zone_a}-{parsed.zone_b}'"
+                    #         )
+                    #     seen_connections.add(conn_key)
+                    #     connections.append(parsed)
 
             if nb_drones is None:
                 raise ValueError(
@@ -255,10 +295,7 @@ class MapConfig:
             hub_type = config[0].strip(":")
             return {name: Hub.parse_and_init(config[2:], hub_type)}
         elif config[0] == "connection:":
-            if len(config) < 2:
-                raise ValueError("no connection appeared")
-            conn_token = config[1]
-            return {conn_token: Connection.parse_and_init(config[1:])}
+            return Connection.parse_and_init(config[1:])
         else:
             raise ValueError(f"unrecognised line prefix '{config[0]}'")
 

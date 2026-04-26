@@ -14,11 +14,14 @@ from enum import Enum
 
 """
 
-
 # remained tasks:
 # おそらくアルゴリズム内で行うべきことだが
 # connection同士がスタートからゴールまでちゃんとくっついているかを確認
 # 独立したコネクションに関しては一旦保留
+# やっぱりパースが気に入らないからちょっと改変
+# 具体的にはMapConfigのconnectionsの格納方法。スマートじゃない。
+# あとできればこの時点でgraphを完成させときたい。
+# connectionsにわざわざ入れてからgraphに、というかダイクストラで使える形のデータに成形するのほんと意味ない。
 
 
 class HubType(Enum):
@@ -96,7 +99,7 @@ class Connection:
         if not isinstance(config, list) or not config:
             raise ValueError("Invalid config type")
         conn_token, *rest = config
-        data = rest[0] if rest else ""
+        data = str(rest)
 
         if conn_token.count("-") != 1:
             raise ValueError(
@@ -142,18 +145,19 @@ class Connection:
 class MapConfig:
     nb_drones: int
     hubs: dict[str, Hub] = field(default_factory=dict)
-    connections: dict[str, Connection] = field(default_factory=dict)
+    connections: list[Connection] = field(default_factory=list)
 
     @classmethod
     def parse_map(cls, filename: str) -> "MapConfig":
         try:
-            nb_drones = None
+            nb_drones: int | None = None
             hubs: dict[str, Hub] = {}
-            connections: dict[str, Connection] = {}
+            connections: list[Connection] = []
             seen_connections: set[frozenset[str]] = set()
 
             with open(filename, 'r') as f:
                 for line_num, line in enumerate(f, 1):
+                    # ignore comments
                     line = line.split("#")[0].strip()
                     if not line:
                         continue
@@ -175,14 +179,52 @@ class MapConfig:
                         continue
 
                     # parse a line practically
-                    try:
-                        parsed = cls.parse_line(line)
-                    except ValueError as e:
-                        raise ValueError(
-                            f"line {line_num}: {e}"
-                        )
+                    # parse_line そのまま移してみる：
+                    metadata = detect_bracket(line)
+                    line = line.split(metadata)[0] if metadata else line
+                    config = line.split()
+                    if metadata:
+                        config.append(metadata)
 
-                    for key, obj in parsed.items():
+                    if config[0] in ("hub:", "start_hub:", "end_hub:"):
+                        name = config[1]
+                        if "-" in name or " " in name:
+                            raise ValueError(
+                                f"zone name '{name}' must not contain dashes or spaces"
+                                )
+                        hub_type = config[0].strip(":")
+                        hub = {name: Hub.parse_and_init(config[2:], hub_type)}
+                        # add
+                        for key, obj in hub.items():
+                            if key in hubs:
+                                raise ValueError(
+                                    f"line {line_num}: "
+                                    + f"duplicate zone name '{key}'"
+                                )
+                            hubs[key] = obj
+                    elif config[0] == "connection:":
+                        conn = Connection.parse_and_init(config[1:])
+                        if (conn.zone_a not in hubs
+                                or conn.obj.zone_b not in hubs):
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + "connection references unknown hub "
+                                + f"'{obj.zone_a}-{obj.zone_b}'"
+                            )
+                        conn_key = frozenset((obj.zone_a, obj.zone_b))
+                        if conn_key in seen_connections:
+                            raise ValueError(
+                                f"line {line_num}: "
+                                + "duplicate connection "
+                                + f"'{obj.zone_a}-{obj.zone_b}'"
+                            )
+                        seen_connections.add(conn_key)
+                        connections.append(conn)
+                    else:
+                        raise ValueError(f"unrecognised line prefix '{config[0]}'")
+
+                    # それに合わせてちょっと改変してみる：
+                    for key, obj in parsed_line.items():
                         if isinstance(obj, Connection):
                             if (obj.zone_a not in hubs
                                or obj.zone_b not in hubs):
@@ -237,52 +279,3 @@ class MapConfig:
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
-
-    @classmethod
-    def parse_line(cls, line: str) -> dict[str, Hub | Connection]:
-        metadata = detect_bracket(line)
-        base = line.split(metadata)[0] if metadata else line
-        config = base.split()
-        if metadata:
-            config.append(metadata)
-
-        if config[0] in ("hub:", "start_hub:", "end_hub:"):
-            name = config[1]
-            if "-" in name or " " in name:
-                raise ValueError(
-                    f"zone name '{name}' must not contain dashes or spaces"
-                    )
-            hub_type = config[0].strip(":")
-            return {name: Hub.parse_and_init(config[2:], hub_type)}
-        elif config[0] == "connection:":
-            if len(config) < 2:
-                raise ValueError("no connection appeared")
-            conn_token = config[1]
-            return {conn_token: Connection.parse_and_init(config[1:])}
-        else:
-            raise ValueError(f"unrecognised line prefix '{config[0]}'")
-
-
-if __name__ == "__main__":
-    map = MapConfig.parse_map("maps/hard/03_ultimate_challenge.txt")
-
-    print(f"nb_drones: {map.nb_drones}\n")
-
-    mod = 4
-    print("hubs: ")
-    h = ', '.join(map.hubs)
-    for i, h in enumerate(map.hubs, 1):
-        if i % mod == 0 or i == len(map.hubs):
-            suf = "\n"
-        else:
-            suf = ", "
-        print(h, end=suf)
-    print()
-
-    print("connections: ")
-    for i, c in enumerate(map.connections, 1):
-        if i % mod == 0 or i == len(map.connections):
-            suf = "\n"
-        else:
-            suf = ", "
-        print(c, end=suf)
