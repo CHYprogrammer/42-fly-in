@@ -54,7 +54,7 @@ class Path:
 
 
 # -----------------------------------------------------------------------------
-# Result type
+# Core Dijkstra
 # -----------------------------------------------------------------------------
 
 
@@ -123,7 +123,7 @@ def _reconstruct(
         total_cost: int
 ) -> Path:
     """Trace came_from back to start and return a Path."""
-    zones: list[str] = {}
+    zones: list[str] = []
     node = goal
 
     while node != start:
@@ -174,7 +174,7 @@ def find_all_paths(
         Returns:
             List or Paths sorted by total_cost ascending.
     """
-    start = next(iter(map_config.start()))
+    start = next(iter(map_config.start))
     goal = next(iter(map_config.end))
     graph = _build_graph(map_config)
     results: list[Path] = []
