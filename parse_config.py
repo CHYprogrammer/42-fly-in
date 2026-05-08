@@ -50,7 +50,8 @@ class Hub():
         Parses raw configuration tokens to initialize a Hub instance.
 
         Args:
-            config (list[str]): A list of tokens containing [name, x, y, metadata].
+            config (list[str]): A list of tokens containing
+                [name, x, y, metadata].
 
         Returns:
             Hub: A new instance of Hub with validated coordinates and metadata.
